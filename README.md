@@ -100,6 +100,20 @@ if let Some((best, ratio)) = tracker.best_method() {
 3. **Simulation output** — Large-scale ternary cellular automata or agent-based models produce massive trit streams that compress well with LZW
 4. **Communication protocols** — Pack ternary commands efficiently for bandwidth-constrained channels
 
+## Known Limitations
+
+- **LZW dictionary grows unbounded**: `lzw_compress()` adds new patterns to the dictionary on every input position without a maximum size. For long inputs (millions of trits), the dictionary code space grows without bound, negating compression gains. Production LZW implementations cap the dictionary (e.g., 4096 entries) and reset when full.
+
+- **Huffman coding with only 3 symbols provides limited compression**: With a 3-symbol alphabet, the Huffman tree has at most 2 levels, giving codes of length 1 and 2. The theoretical minimum is log₂(3) ≈ 1.585 bits/symbol, and Huffman achieves at most ~1.67 bits/symbol — only a 16% improvement over raw 2-bit packing. The gains are negligible unless one symbol dominates.
+
+- **RLE stores `usize` counts with no maximum**: `RleEntry.count` is a `usize`. If decompression code assumes a smaller count type (e.g., `u16`), it will overflow. The serialized format has no defined count width, making cross-platform interoperability risky.
+
+- **Entropy encoding is trivial bit-packing**: `entropy_encode()` simply packs 2 bits per trit, achieving 2 bits/symbol. This is not actually entropy coding — it doesn't adapt to symbol frequencies. The name is misleading; "bit-packed encoding" would be more accurate.
+
+- **CompressionTracker compares size estimates, not actual compressed output**: `tracker.record()` takes a pre-computed byte count, not the actual compressed data. This means the comparison can be wrong if the size estimates are inaccurate (e.g., not accounting for metadata overhead in Huffman trees or LZW dictionaries).
+
+- **Dictionary compressor requires separate training data**: `DictionaryCompressor` must be trained on representative data before use. If the training data doesn't reflect the actual distribution of the data being compressed, the dictionary entries are useless and may even expand the output.
+
 ## Ecosystem
 
 Part of the **SuperInstance** ternary computing crate family:
