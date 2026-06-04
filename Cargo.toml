@@ -1,0 +1,6 @@
+[package]
+name = "ternary-compression-v2"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Advanced ternary compression with RLE, Huffman coding, LZW, dictionary compression, and entropy coding for {-1,0,+1} alphabets"
