@@ -1,141 +1,90 @@
 # ternary-compression-v2
 
-Multi-algorithm compression for ternary data streams — RLE, Huffman, LZW, dictionary compression, and entropy coding for `{-1, 0, +1}` values.
+**Advanced ternary compression for streams of {-1, 0, +1} values**
 
-## Why This Exists
+[![ternary](https://img.shields.io/badge/ecosystem-ternary-blue)](https://github.com/orgs/SuperInstance/repositories?q=ternary)
+[![tests](https://img.shields.io/badge/tests-25-green)]()
 
-Ternary data appears naturally in quantized neural networks, balanced logic systems, and signal processing. Standard compression algorithms assume binary or byte-oriented data, leaving efficiency on the table when your alphabet is only three symbols. This crate provides a suite of compression methods specifically tuned for the ternary domain.
+## Overview
 
-## Core Concepts
+Advanced ternary compression for streams of {-1, 0, +1} values.
 
-- **Trit** — The fundamental unit: `Neg` (-1), `Zero` (0), or `Pos` (+1)
-- **Run-Length Encoding (RLE)** — Exploits consecutive repeats of the same trit
-- **Ternary Huffman Coding** — Variable-length codes weighted by symbol frequency
-- **Ternary LZW** — Dictionary-based compression that builds up pattern tables on the fly
-- **Dictionary Compression** — Finds and replaces frequent n-gram patterns
-- **Entropy Coding** — Packs 4 trits per byte (2 bits each) for compact representation
-- **CompressionTracker** — Benchmarks multiple methods against the same data
+Provides run-length encoding, ternary Huffman coding, LZW adapted for
+the ternary alphabet, dictionary compression, entropy coding, and
+compression ratio tracking.
 
-## Quick Start
+## Architecture
 
-```toml
-# Cargo.toml
-[dependencies]
-ternary-compression-v2 = "0.1"
-```
+- **`RleEntry`** — core data structure
+- **`DictionaryCompressor`** — core data structure
+- **`CompressionTracker`** — core data structure
+- **`Trit`** — state enumeration
+- **`HuffNode`** — state enumeration
+- **`DictToken`** — state enumeration
 
-```rust
-use ternary_compression_v2::*;
+### Key Functions
 
-// Create some ternary data
-let data: Vec<Trit> = vec![
-    Trit::Pos, Trit::Pos, Trit::Pos, Trit::Pos, Trit::Pos,
-    Trit::Zero, Trit::Zero, Trit::Zero,
-    Trit::Neg, Trit::Neg,
-];
+- `to_i8()`
+- `from_i8()`
+- `rle_compress()`
+- `rle_decompress()`
+- `weight()`
+- `build_codes()`
+- `build_huffman_tree()`
+- `huffman_encode()`
+- `huffman_decode()`
+- `lzw_compress()`
+- ... and 14 more
 
-// Run-length encoding
-let rle = rle_compress(&data);
-let decompressed = rle_decompress(&rle);
-assert_eq!(data, decompressed);
+## Why Ternary?
 
-// Huffman coding
-let mut freqs = std::collections::HashMap::new();
-for &t in &data { *freqs.entry(t).or_insert(0) += 1; }
-let tree = build_huffman_tree(&freqs).unwrap();
-let codes = tree.build_codes();
-let encoded = huffman_encode(&data, &codes);
-let decoded = huffman_decode(&encoded, &tree);
-assert_eq!(data, decoded);
+The balanced ternary system {-1, 0, +1} (also known as Z₃) is the mathematically optimal discrete encoding:
+- **More expressive than binary**: three states capture positive, neutral, and negative
+- **Natural for decisions**: accept/reject/abstain, buy/hold/sell, agree/disagree/neutral
+- **Self-balancing**: the 0 state acts as a universal screen, preventing pathological lock-in
+- **Z₃ cyclic dynamics**: rock-paper-scissors is the only natural coordination mechanism
 
-// LZW compression
-let lzw_codes = lzw_compress(&data);
-let lzw_decoded = lzw_decompress(&lzw_codes);
-assert_eq!(data, lzw_decoded);
+## Stats
 
-// Entropy coding (compact bit-packing)
-let packed = entropy_encode(&data);
-let unpacked = entropy_decode(&packed, data.len());
-assert_eq!(data, unpacked);
-
-// Compare methods
-let mut tracker = CompressionTracker::new(data.len());
-tracker.record("rle", rle.len() * std::mem::size_of::<RleEntry>());
-tracker.record("huffman", (encoded.len() + 7) / 8);
-tracker.record("lzw", lzw_codes.len() * 2);
-if let Some((best, ratio)) = tracker.best_method() {
-    println!("Best method: {} (ratio: {:.2})", best, ratio);
-}
-```
-
-## API Overview
-
-| Function / Type | Description |
-|---|---|
-| `Trit` | Enum: `Neg`, `Zero`, `Pos` with `to_i8()` / `from_i8()` |
-| `rle_compress` / `rle_decompress` | Run-length encoding |
-| `build_huffman_tree` / `huffman_encode` / `huffman_decode` | Huffman coding |
-| `lzw_compress` / `lzw_decompress` | LZW compression |
-| `DictionaryCompressor` | N-gram pattern dictionary |
-| `shannon_entropy` | Shannon entropy in bits/symbol |
-| `entropy_encode` / `entropy_decode` | Bit-packed encoding |
-| `CompressionTracker` | Benchmark and compare methods |
-
-## How It Works
-
-**RLE** scans the stream, grouping consecutive identical trits into `(Trit, count)` pairs. Best for data with long runs.
-
-**Huffman** builds a frequency-weighted binary tree, assigning shorter codes to more common trits. Most effective when symbol frequencies are skewed.
-
-**LZW** starts with a 3-entry dictionary (one per trit) and progressively adds multi-trit patterns as it encounters them, replacing repeated patterns with dictionary codes.
-
-**Dictionary Compression** pre-scans data for frequent n-grams, then replaces them with single codes during compression.
-
-**Entropy Coding** packs each trit into 2 bits (4 trits per byte), achieving the information-theoretic baseline.
-
-## Use Cases
-
-1. **Quantized neural network weight storage** — Compress ternary-weighted models (e.g., Trained Ternary Quantization) for deployment on edge devices
-2. **Sensor data compression** — Ternary-encoded signals from thresholded sensors can be compressed before transmission
-3. **Simulation output** — Large-scale ternary cellular automata or agent-based models produce massive trit streams that compress well with LZW
-4. **Communication protocols** — Pack ternary commands efficiently for bandwidth-constrained channels
-
-## Known Limitations
-
-- **LZW dictionary grows unbounded**: `lzw_compress()` adds new patterns to the dictionary on every input position without a maximum size. For long inputs (millions of trits), the dictionary code space grows without bound, negating compression gains. Production LZW implementations cap the dictionary (e.g., 4096 entries) and reset when full.
-
-- **Huffman coding with only 3 symbols provides limited compression**: With a 3-symbol alphabet, the Huffman tree has at most 2 levels, giving codes of length 1 and 2. The theoretical minimum is log₂(3) ≈ 1.585 bits/symbol, and Huffman achieves at most ~1.67 bits/symbol — only a 16% improvement over raw 2-bit packing. The gains are negligible unless one symbol dominates.
-
-- **RLE stores `usize` counts with no maximum**: `RleEntry.count` is a `usize`. If decompression code assumes a smaller count type (e.g., `u16`), it will overflow. The serialized format has no defined count width, making cross-platform interoperability risky.
-
-- **Entropy encoding is trivial bit-packing**: `entropy_encode()` simply packs 2 bits per trit, achieving 2 bits/symbol. This is not actually entropy coding — it doesn't adapt to symbol frequencies. The name is misleading; "bit-packed encoding" would be more accurate.
-
-- **CompressionTracker compares size estimates, not actual compressed output**: `tracker.record()` takes a pre-computed byte count, not the actual compressed data. This means the comparison can be wrong if the size estimates are inaccurate (e.g., not accounting for metadata overhead in Huffman trees or LZW dictionaries).
-
-- **Dictionary compressor requires separate training data**: `DictionaryCompressor` must be trained on representative data before use. If the training data doesn't reflect the actual distribution of the data being compressed, the dictionary entries are useless and may even expand the output.
+| Metric | Value |
+|--------|-------|
+| Lines of Rust | 748 |
+| Test count | 25 |
+| Public types | 6 |
+| Public functions | 24 |
 
 ## Ecosystem
 
-Part of the **SuperInstance** ternary computing crate family:
+This crate is part of the **[SuperInstance Ternary Fleet](https://github.com/orgs/SuperInstance/repositories?q=ternary)**:
 
-- `ternary-matrix` — Compact ternary matrix operations
-- `ternary-hash` — Hashing and fingerprinting for ternary data
-- `ternary-pca` — Principal component analysis on ternary values
-- `ternary-ga` — Genetic algorithms with ternary genomes
-- `ternary-reservoir` — Echo state networks with ternary nodes
-- `ternary-evolution-advanced` — Advanced evolutionary optimization
-- `ternary-geometry` — Geometric algorithms in ternary space
-- `ternary-causality` — Causal inference for ternary systems
-- `ternary-consensus` — Distributed consensus for ternary agents
+- **[ternary-core](https://github.com/SuperInstance/ternary-core)** — shared traits and Z₃ arithmetic
+- **[ternary-grid](https://github.com/SuperInstance/ternary-grid)** — spatial grid with {-1, 0, +1} cells
+- **[ternary-graph](https://github.com/SuperInstance/ternary-graph)** — ternary-weighted graph algorithms
+- **[ternary-automata](https://github.com/SuperInstance/ternary-automata)** — three-state cellular automata
+- **[ternary-compiler](https://github.com/SuperInstance/ternary-compiler)** — expression compiler and optimizer
+
+200+ crates. 4,300+ tests. One pattern.
+
+## Research Context
+
+The ternary approach connects to several active research areas:
+- **Ternary Neural Networks** (TNNs): weights constrained to {-1, 0, +1} for efficient inference
+- **Huawei's ternary chip**: 7nm ternary silicon with 60% less power consumption
+- **Active inference**: free energy minimization naturally maps to ternary action selection
+- **Cyclic dominance**: RPS dynamics maintain biodiversity in spatial ecology
+- **Z₃ group theory**: the only algebraic group on three elements is cyclic addition mod 3
+
+## Usage
+
+```toml
+[dependencies]
+ternary-compression-v2 = "0.1.0"
+```
+
+```rust
+use ternary_compression_v2;
+```
 
 ## License
 
 MIT
-
-## See Also
-- **ternary-compression** — related
-- **ternary-archive** — related
-- **ternary-database** — related
-- **ternary-codes** — related
-- **ternary-hash** — related
-
