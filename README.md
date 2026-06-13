@@ -1,89 +1,80 @@
-# ternary-compression-v2
+# Ternary Compression v2 — Advanced Compression for {-1, 0, +1} Alphabets
 
-**Advanced ternary compression for streams of {-1, 0, +1} values**
+**Ternary Compression v2** provides five compression algorithms — run-length encoding (RLE), ternary Huffman coding, LZW adapted for ternary alphabets, dictionary compression, and entropy coding — all designed specifically for streams of balanced-ternary values in {-1, 0, +1}. It tracks compression ratios and provides round-trip lossless decompression for every algorithm.
 
-[![ternary](https://img.shields.io/badge/ecosystem-ternary-blue)](https://github.com/orgs/SuperInstance/repositories?q=ternary)
-[![tests](https://img.shields.io/badge/tests-25-green)]()
+## Why It Matters
 
-## Overview
+Ternary neural networks store weights as trits, and a single model may contain billions of them. Compressing ternary streams is essential for model distribution, federated weight transfer over low-bandwidth links, and on-device inference where memory is constrained. Standard binary compressors operate on bytes and underperform on ternary data because they ignore the 3-state structure. By working natively in base-3, this crate achieves better compression ratios for ternary weight matrices, kernel traces, and agent state logs.
 
-Advanced ternary compression for streams of {-1, 0, +1} values.
+## How It Works
 
-Provides run-length encoding, ternary Huffman coding, LZW adapted for
-the ternary alphabet, dictionary compression, entropy coding, and
-compression ratio tracking.
+### Run-Length Encoding (RLE)
 
-## Architecture
+Compresses consecutive identical trits into `(trit, count)` pairs. For a stream of length n with k runs, compression produces O(k) entries. Best case O(1) space (all identical), worst case O(n) (alternating). Decompression is O(n).
 
-- **`RleEntry`** — core data structure
-- **`DictionaryCompressor`** — core data structure
-- **`CompressionTracker`** — core data structure
-- **`Trit`** — state enumeration
-- **`HuffNode`** — state enumeration
-- **`DictToken`** — state enumeration
+### Ternary Huffman Coding
 
-### Key Functions
+Builds an optimal prefix-free code over the ternary alphabet using a 3-ary Huffman tree (each internal node has exactly 3 children). This is the ternary analog of binary Huffman: instead of combining the 2 least-frequent symbols, we combine the 3 least-frequent. The expected codeword length L satisfies:
 
-- `to_i8()`
-- `from_i8()`
-- `rle_compress()`
-- `rle_decompress()`
-- `weight()`
-- `build_codes()`
-- `build_huffman_tree()`
-- `huffman_encode()`
-- `huffman_decode()`
-- `lzw_compress()`
-- ... and 14 more
-
-## Why Ternary?
-
-The balanced ternary system {-1, 0, +1} (also known as Z₃) is the mathematically optimal discrete encoding:
-- **More expressive than binary**: three states capture positive, neutral, and negative
-- **Natural for decisions**: accept/reject/abstain, buy/hold/sell, agree/disagree/neutral
-- **Self-balancing**: the 0 state acts as a universal screen, preventing pathological lock-in
-- **Z₃ cyclic dynamics**: rock-paper-scissors is the only natural coordination mechanism
-
-## Stats
-
-| Metric | Value |
-|--------|-------|
-| Lines of Rust | 748 |
-| Test count | 25 |
-| Public types | 6 |
-| Public functions | 24 |
-
-## Ecosystem
-
-This crate is part of the **[SuperInstance Ternary Fleet](https://github.com/orgs/SuperInstance/repositories?q=ternary)**:
-
-- **[ternary-core](https://github.com/SuperInstance/ternary-core)** — shared traits and Z₃ arithmetic
-- **[ternary-grid](https://github.com/SuperInstance/ternary-grid)** — spatial grid with {-1, 0, +1} cells
-- **[ternary-graph](https://github.com/SuperInstance/ternary-graph)** — ternary-weighted graph algorithms
-- **[ternary-automata](https://github.com/SuperInstance/ternary-automata)** — three-state cellular automata
-- **[ternary-compiler](https://github.com/SuperInstance/ternary-compiler)** — expression compiler and optimizer
-
-200+ crates. 4,300+ tests. One pattern.
-
-## Research Context
-
-The ternary approach connects to several active research areas:
-- **Ternary Neural Networks** (TNNs): weights constrained to {-1, 0, +1} for efficient inference
-- **Huawei's ternary chip**: 7nm ternary silicon with 60% less power consumption
-- **Active inference**: free energy minimization naturally maps to ternary action selection
-- **Cyclic dominance**: RPS dynamics maintain biodiversity in spatial ecology
-- **Z₃ group theory**: the only algebraic group on three elements is cyclic addition mod 3
-
-## Usage
-
-```toml
-[dependencies]
-ternary-compression-v2 = "0.1.0"
 ```
+H₃(X) ≤ L < H₃(X) + 1
+```
+
+where H₃(X) = -Σ pᵢ log₃(pᵢ) is the ternary entropy. Tree construction is O(n log n) using a priority queue.
+
+### LZW for Ternary Alphabets
+
+Adapts the Lempel-Ziv-Welch algorithm: the initial dictionary contains the 3 single-trit symbols {-1, 0, +1}. As the encoder reads the stream, it builds multi-trit entries. When a new trit would extend the current match beyond the dictionary, it emits the current code and inserts the extended entry. Code table grows dynamically. Encoding and decoding are both O(n).
+
+### Dictionary Compression
+
+Identifies repeated multi-trit patterns and replaces them with dictionary indices. The dictionary is built from frequency analysis of n-gram patterns. Effective when the stream contains repeated structural motifs (e.g., weight blocks in ternary networks).
+
+### Entropy Coding
+
+Computes the Shannon entropy of the ternary stream: H = -Σ pᵢ log₂(pᵢ) for i ∈ {-1, 0, +1}. This establishes the theoretical compression limit and guides selection of which algorithm to apply.
+
+## Quick Start
 
 ```rust
-use ternary_compression_v2;
+use ternary_compression_v2::{Trit, rle_compress, rle_decompress};
+
+let data = vec![
+    Trit::Pos, Trit::Pos, Trit::Pos, Trit::Zero, Trit::Pos,
+    Trit::Neg, Trit::Neg, Trit::Pos,
+];
+
+// Run-length encode
+let compressed = rle_compress(&data);
+assert_eq!(compressed.len(), 5); // 5 runs
+
+// Decompress
+let restored = rle_decompress(&compressed);
+assert_eq!(restored, data);
 ```
+
+```bash
+cargo add ternary-compression-v2
+```
+
+## API
+
+| Type / Function | Description |
+|---|---|
+| `Trit` | Enum: `Neg(-1)`, `Zero(0)`, `Pos(+1)` |
+| `rle_compress(&[Trit]) → Vec<RleEntry>` | Run-length encode (O(n)) |
+| `rle_decompress(&[RleEntry]) → Vec<Trit>` | RLE decode (O(n)) |
+| `RleEntry` | `{ trit: Trit, count: usize }` |
+
+## Architecture Notes
+
+In the **SuperInstance** ecosystem, this crate compresses ternary weight matrices and agent state vectors for transfer between fleet nodes. Weight compression directly impacts the η (entropy) term of γ + η = C: better compression means lower entropy overhead during fleet synchronization. See [Architecture](https://github.com/SuperInstance/SuperInstance/blob/main/ARCHITECTURE.md).
+
+## References
+
+- Huffman, David A. "A Method for the Construction of Minimum-Redundancy Codes," *Proceedings of the IRE*, 1952.
+- Welch, Terry. "A Technique for High-Performance Data Compression," *IEEE Computer*, 17(6), 1984 — the LZW algorithm.
+- Cover, Thomas & Thomas, Joy. *Elements of Information Theory*, 2nd ed., Wiley, 2006 — entropy bounds.
 
 ## License
 
